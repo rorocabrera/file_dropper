@@ -127,6 +127,59 @@ class _FileManagerHomeState extends State<FileManagerHome> {
     );
   }
 
+  void _removeItem(String id) {
+    setState(() {
+      _items.removeWhere((item) => item.id == id);
+      // Ensure there's always at least one placeholder
+      if (!_items.any((item) => item.isPlaceholder)) {
+        _items.add(MergeItem(isPlaceholder: true));
+      }
+    });
+  }
+
+    void _handleItemTap(MergeItem item) async {
+    if (item.isText && !item.isPlaceholder) {
+      _editTextBlock(item);
+    } else if (item.isFile) {
+      try {
+        final content = await _fileService.getFileContent(item.file!);
+        _textEditingController.text = content;
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (BuildContext context) {
+              return TextInputDialog(
+                controller: _textEditingController,
+                title: 'Edit ${item.displayName}',
+                isEdit: true,
+                onSave: () {
+                  setState(() {
+                    // Convert file to text block
+                    final index = _items.indexOf(item);
+                    _items[index] = MergeItem(
+                      customText: _textEditingController.text,
+                    );
+                  });
+                  _textEditingController.clear();
+                  Navigator.pop(context);
+                },
+              );
+            },
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(e.toString()),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _mergeFiles() async {
     if (_items.length < 2) return;
 
@@ -134,7 +187,7 @@ class _FileManagerHomeState extends State<FileManagerHome> {
       _isMerging = true;
     });
 
-    await _fileService.mergeFiles(
+    String? savedFilePath = await _fileService.mergeFiles(
       items: _items,
       onError: (error) {
         if (mounted) {
@@ -146,17 +199,22 @@ class _FileManagerHomeState extends State<FileManagerHome> {
           );
         }
       },
-      onSuccess: () {
+      onSuccess: (filePath) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Files merged successfully!'),
+            SnackBar(
+              content: const Text('Files merged successfully! Click to show in folder'),
               backgroundColor: Colors.green,
+              action: SnackBarAction(
+                label: 'Show',
+                textColor: Colors.white,
+                onPressed: () => _fileService.openFileLocation(filePath),
+              ),
             ),
           );
           setState(() {
             _items.clear();
-            _items.add(MergeItem(isPlaceholder: true)); // Add back initial placeholder
+            _items.add(MergeItem(isPlaceholder: true));
           });
         }
       },
@@ -167,20 +225,40 @@ class _FileManagerHomeState extends State<FileManagerHome> {
     });
   }
 
-  void _removeItem(String id) {
-    setState(() {
-      _items.removeWhere((item) => item.id == id);
-      // Ensure there's always at least one placeholder
-      if (!_items.any((item) => item.isPlaceholder)) {
-        _items.add(MergeItem(isPlaceholder: true));
-      }
-    });
-  }
+  Future<void> _copyToClipboard() async {
+    if (_items.length < 2) return;
 
-  void _handleItemTap(MergeItem item) {
-    if (item.isText && !item.isPlaceholder) {
-      _editTextBlock(item);
-    }
+    setState(() {
+      _isMerging = true;
+    });
+
+    await _fileService.copyToClipboard(
+      items: _items,
+      onError: (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error copying to clipboard: $error'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      },
+      onSuccess: () {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Content copied to clipboard!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      },
+    );
+
+    setState(() {
+      _isMerging = false;
+    });
   }
 
   @override
@@ -209,36 +287,53 @@ class _FileManagerHomeState extends State<FileManagerHome> {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: _addNewPlaceholder,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add Text Block'),
-                  ),
-                ],
-              ),
+              
             ),
-            SizedBox(
-              width: 200,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _items.length >= 2 && !_isMerging ? _mergeFiles : null,
-                child: _isMerging
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'Merge Files',
-                        style: TextStyle(fontSize: 16),
-                      ),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 200,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _items.length >= 2 && !_isMerging ? _mergeFiles : null,
+                    child: _isMerging
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Merge Files',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 200,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _items.length >= 2 && !_isMerging ? _copyToClipboard : null,
+                    child: _isMerging
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Copy to Clipboard',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
