@@ -261,83 +261,102 @@ class _FileManagerHomeState extends State<FileManagerHome> {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('File Merger'),
-        centerTitle: true,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Expanded(
-              child: FileDropZone(
-                items: _items,
-                isDragging: _isDragging,
-                onDragDone: _handleFileDrop,
-                onDraggingChanged: (isDragging) => setState(() => _isDragging = isDragging),
-                onReorder: _handleReorder,
-                onEdit: _editTextBlock,
-                onRemove: _removeItem,
-                onPlaceholderTap: (index) => _insertTextBlock(index, isEmpty: true),
-                onItemTap: _handleItemTap,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 200,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _items.length >= 2 && !_isMerging ? _mergeFiles : null,
-                    child: _isMerging
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Merge Files',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: 200,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _items.length >= 2 && !_isMerging ? _copyToClipboard : null,
-                    child: _isMerging
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Copy to Clipboard',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+void _resetAll() {
+  setState(() {
+    // Clear all items
+    _items.clear();
+    // Add back initial placeholder
+    _items.add(MergeItem(isPlaceholder: true));
+    // Clear text controller
+    _textEditingController.clear();
+    // Reset drag state
+    _isDragging = false;
+    // Reset merge state
+    _isMerging = false;
+  });
+}
+
+// Update the build method to include the reset button
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(
+      title: const Text('Droppy'),
+      centerTitle: true,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Reset All',
+          onPressed: _resetAll,
         ),
+      ],
+    ),
+    body: Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          Expanded(
+            child: FileDropZone(
+              items: _items,
+              isDragging: _isDragging,
+              onDragDone: _handleFileDrop,
+              onDraggingChanged: (isDragging) => setState(() => _isDragging = isDragging),
+              onReorder: _handleReorder,
+              onEdit: _editTextBlock,
+              onRemove: _removeItem,
+              onPlaceholderTap: (index) => _insertTextBlock(index, isEmpty: true),
+              onItemTap: _handleItemTap,
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 200,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _items.length >= 2 && !_isMerging ? _mergeFiles : null,
+                  child: _isMerging
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Merge Files',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              SizedBox(
+                width: 200,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _items.length >= 2 && !_isMerging ? _copyToClipboard : null,
+                  child: _isMerging
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Copy to Clipboard',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 }

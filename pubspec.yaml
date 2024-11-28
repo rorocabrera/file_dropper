@@ -39,6 +39,7 @@ dependencies:
   file_picker: ^8.1.4
   path: ^1.9.0
   url_launcher: ^6.3.1
+  flutter_launcher_icons: ^0.14.1
 
 
 dev_dependencies:

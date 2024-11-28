@@ -6,47 +6,51 @@ import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher.dart';
 
 class FileService {
-  Future<String> generateMergedContent(List<MergeItem> items) async {
-    final StringBuffer buffer = StringBuffer();
+Future<String> generateMergedContent(List<MergeItem> items) async {
+  final StringBuffer buffer = StringBuffer();
 
-    for (final item in items) {
-      if (item.isPlaceholder) continue;
-      
-      if (item.isFile) {
-        buffer.writeln('=== ${path.basename(item.file!.path)} ===');
-        buffer.writeln(await item.file!.readAsString());
-      } else if (item.isText && !item.isEmpty) {
-        buffer.writeln(item.customText);
-      }
-      buffer.writeln(); // Add a blank line between items
+  for (final item in items) {
+    if (item.isPlaceholder) continue;
+    
+    if (item.isFile) {
+      // Use the full file path instead of just the basename
+      buffer.writeln('=== ${item.file!.path} ===');
+      buffer.writeln(await item.file!.readAsString());
+    } else if (item.isText && !item.isEmpty) {
+      buffer.writeln(item.customText);
     }
-
-    return buffer.toString();
+    buffer.writeln(); // Add a blank line between items
   }
 
-  Future<String?> mergeFiles({
-    required List<MergeItem> items,
-    required Function(String) onError,
-    required Function(String) onSuccess,
-  }) async {
-    try {
-      String? outputPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save merged file as',
-        fileName: 'merged_files.txt',
-      );
+  return buffer.toString();
+}
 
-      if (outputPath != null) {
-        final content = await generateMergedContent(items);
-        final outputFile = File(outputPath);
-        await outputFile.writeAsString(content);
-        onSuccess(outputPath);
-        return outputPath;
-      }
-    } catch (e) {
-      onError(e.toString());
+Future<String?> mergeFiles({
+  required List<MergeItem> items,
+  required Function(String) onError,
+  required Function(String) onSuccess,
+}) async {
+  try {
+    // Generate a timestamp for unique filename
+    final timestamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+    
+    String? outputPath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save merged file as',
+      fileName: 'merged_files_$timestamp.txt',
+    );
+
+    if (outputPath != null) {
+      final content = await generateMergedContent(items);
+      final outputFile = File(outputPath);
+      await outputFile.writeAsString(content);
+      onSuccess(outputPath);
+      return outputPath;
     }
-    return null;
+  } catch (e) {
+    onError(e.toString());
   }
+  return null;
+}
 
   Future<void> copyToClipboard({
     required List<MergeItem> items,
