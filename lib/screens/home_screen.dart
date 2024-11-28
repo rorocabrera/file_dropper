@@ -5,6 +5,7 @@ import '../models/merge_item.dart';
 import '../widgets/file_drop_zone.dart';
 import '../widgets/text_input_dialog.dart';
 import '../services/file_service.dart';
+import 'package:path/path.dart' as path;
 
 class FileManagerHome extends StatefulWidget {
   const FileManagerHome({super.key});
@@ -37,12 +38,40 @@ class _FileManagerHomeState extends State<FileManagerHome> {
     setState(() {
       for (final file in details.files) {
         if (file.path.isNotEmpty) {
-          _items.insert(_items.length - 1, MergeItem(file: File(file.path)));
+          // Check if file already exists in the list
+          final originalPath = _getOriginalPath(file.path);
+          final exists = _items.any((item) => 
+            item.isFile && _getOriginalPath(item.file!.path) == originalPath
+          );
+          
+          if (!exists) {
+            _items.insert(_items.length - 1, MergeItem(file: File(file.path)));
+          }
         }
       }
     });
   }
 
+String _getOriginalPath(String path) {
+    // Remove any temporary directory prefix
+    final segments = path.split('/');
+    final fileName = segments.last;
+    
+    // Remove any incremental suffix (e.g., "-1", "-2") from the filename
+    final baseFileName = fileName.replaceAll(RegExp(r'-\d+(\.[^.]+)?$'), '');
+    
+    // If the file has no extension, return as is
+    if (!baseFileName.contains('.')) {
+      return baseFileName;
+    }
+    
+    // Split the filename and extension
+    final lastDot = baseFileName.lastIndexOf('.');
+    final name = baseFileName.substring(0, lastDot);
+    final extension = baseFileName.substring(lastDot);
+    
+    return name + extension;
+  }
   void _addNewPlaceholder() {
     setState(() {
       _items.add(MergeItem(isPlaceholder: true));
@@ -261,7 +290,7 @@ class _FileManagerHomeState extends State<FileManagerHome> {
     });
   }
 
-void _resetAll() {
+void _resetAll() async {
   setState(() {
     // Clear all items
     _items.clear();
@@ -274,6 +303,20 @@ void _resetAll() {
     // Reset merge state
     _isMerging = false;
   });
+
+  // Clear temporary files
+  try {
+    final tempDir = Directory(path.join(
+      path.dirname(Platform.resolvedExecutable),
+      'Drops'
+    ));
+    if (await tempDir.exists()) {
+      await tempDir.delete(recursive: true);
+      await tempDir.create();
+    }
+  } catch (e) {
+    print('Error clearing temporary files: $e');
+  }
 }
 
 // Update the build method to include the reset button

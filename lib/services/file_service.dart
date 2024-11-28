@@ -13,8 +13,12 @@ Future<String> generateMergedContent(List<MergeItem> items) async {
     if (item.isPlaceholder) continue;
     
     if (item.isFile) {
-      // Use the full file path instead of just the basename
-      buffer.writeln('=== ${item.file!.path} ===');
+      final filePath = item.file!.path;
+      final fileName = path.basename(filePath);
+      // Clean up the filename by removing temporary path and incremental numbers
+      final cleanFileName = fileName.replaceAll(RegExp(r'-\d+(\.[^.]+)?$'), '');
+      
+      buffer.writeln('=== $cleanFileName ===');
       buffer.writeln(await item.file!.readAsString());
     } else if (item.isText && !item.isEmpty) {
       buffer.writeln(item.customText);
@@ -24,7 +28,6 @@ Future<String> generateMergedContent(List<MergeItem> items) async {
 
   return buffer.toString();
 }
-
 Future<String?> mergeFiles({
   required List<MergeItem> items,
   required Function(String) onError,
