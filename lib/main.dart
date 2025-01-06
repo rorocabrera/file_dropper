@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
+import 'package:window_size/window_size.dart';
+import 'dart:io';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    setWindowTitle('Droppy');
+    setWindowMinSize(const Size(800, 600));
+    setWindowMaxSize(const Size(1600, 1200));
+  }
+  
   runApp(const FileManagerApp());
 }
 
