@@ -38,40 +38,48 @@ class _FileManagerHomeState extends State<FileManagerHome> {
     setState(() {
       for (final file in details.files) {
         if (file.path.isNotEmpty) {
+          // Get clean filename without incremental suffix
+          final fileName = _getCleanFileName(file.path);
+          
           // Check if file already exists in the list
-          final originalPath = _getOriginalPath(file.path);
           final exists = _items.any((item) => 
-            item.isFile && _getOriginalPath(item.file!.path) == originalPath
+            item.isFile && item.originalFileName == fileName
           );
           
           if (!exists) {
-            _items.insert(_items.length - 1, MergeItem(file: File(file.path)));
+            _items.insert(_items.length - 1, MergeItem(
+              file: File(file.path),
+              originalFileName: fileName
+            ));
           }
         }
       }
     });
   }
 
-String _getOriginalPath(String path) {
-    // Remove any temporary directory prefix
-    final segments = path.split('/');
-    final fileName = segments.last;
+  String _getCleanFileName(String filePath) {
+    final fileName = path.basename(filePath);
     
-    // Remove any incremental suffix (e.g., "-1", "-2") from the filename
-    final baseFileName = fileName.replaceAll(RegExp(r'-\d+(\.[^.]+)?$'), '');
+    // Split filename and extension
+    final lastDot = fileName.lastIndexOf('.');
+    final nameWithoutExt = lastDot != -1 ? fileName.substring(0, lastDot) : fileName;
+    final extension = lastDot != -1 ? fileName.substring(lastDot) : '';
     
-    // If the file has no extension, return as is
-    if (!baseFileName.contains('.')) {
-      return baseFileName;
+    // Find all incremental numbers in the filename
+    final numbers = RegExp(r'-\d+').allMatches(nameWithoutExt).toList();
+    
+    if (numbers.isEmpty) {
+      return fileName;
     }
     
-    // Split the filename and extension
-    final lastDot = baseFileName.lastIndexOf('.');
-    final name = baseFileName.substring(0, lastDot);
-    final extension = baseFileName.substring(lastDot);
+    // Remove only the last incremental number
+    final lastNumber = numbers.last;
+    final cleanName = nameWithoutExt.substring(0, lastNumber.start) + 
+                     (numbers.length > 1 ? nameWithoutExt.substring(lastNumber.end) : '');
     
-    return name + extension;
+    return cleanName + extension;
   }
+
   void _addNewPlaceholder() {
     setState(() {
       _items.add(MergeItem(isPlaceholder: true));
@@ -351,6 +359,7 @@ Widget build(BuildContext context) {
               onItemTap: _handleItemTap,
             ),
           ),
+          const SizedBox(height: 16), // Added padding
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

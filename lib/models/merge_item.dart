@@ -6,12 +6,14 @@ class MergeItem {
   final String id = UniqueKey().toString();
   File? file;
   String? customText;
+  String? originalFileName;
   bool isEmpty;
   bool isPlaceholder;
   
   MergeItem({
     this.file, 
     this.customText, 
+    this.originalFileName,
     this.isEmpty = false,
     this.isPlaceholder = false,
   });
@@ -21,7 +23,7 @@ class MergeItem {
   
   String get displayName {
     if (isFile) {
-      return path.basename(file!.path);
+      return originalFileName ?? path.basename(file!.path);
     } else if (isPlaceholder) {
       return 'Insert Text Block';
     } else if (isEmpty) {
