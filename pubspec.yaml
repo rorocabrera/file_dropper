@@ -28,6 +28,9 @@ dev_dependencies:
 flutter_launcher_icons:
   macos:
     generate: true
+    image_path: "assets/icons/droppy.png"
+  linux:
+    generate: true
     image_path: "assets/icons/droppy.png"  # Update this path to your icon location
 
 flutter:
