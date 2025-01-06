@@ -1,0 +1,21 @@
+version: 1
+script:
+  - flutter build linux
+AppDir:
+  path: build/linux/AppDir
+  app_info:
+    id: com.example.droppy
+    name: Droppy
+    version: 1.0.0
+    exec: droppy
+    icon: assets/icon.png
+  files:
+    include:
+      - build/linux/x64/release/bundle/**/*
+    exclude:
+      - usr/share/man
+      - usr/share/doc
+
+AppImage:
+  arch: x86_64
+  update-information: None
