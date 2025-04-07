@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:cross_file/cross_file.dart';
 import '../models/merge_item.dart';
 import '../widgets/file_drop_zone.dart';
 import '../widgets/text_input_dialog.dart';
@@ -15,11 +17,11 @@ class FileManagerHome extends StatefulWidget {
 }
 
 class _FileManagerHomeState extends State<FileManagerHome> {
-  final List<MergeItem> _items = [];
+  final FileService _fileService = FileService();
+  List<MergeItem> _items = [MergeItem(isPlaceholder: true)];
   bool _isDragging = false;
   bool _isMerging = false;
   final TextEditingController _textEditingController = TextEditingController();
-  final FileService _fileService = FileService();
 
   @override
   void initState() {
@@ -34,23 +36,43 @@ class _FileManagerHomeState extends State<FileManagerHome> {
     super.dispose();
   }
 
-  void _handleFileDrop(DropDoneDetails details) {
+  void _handleFileDrop(DropDoneDetails details) async {
     setState(() {
-      for (final file in details.files) {
-        if (file.path.isNotEmpty) {
-          // Get clean filename without incremental suffix
-          final fileName = _getCleanFileName(file.path);
+      for (final xFile in details.files) {
+        final originalPath = xFile.path;
+        
+        // Check if this is a temporary path
+        if (originalPath.contains('/var/folders/') && originalPath.contains('/Drops/')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File is being imported from a temporary location. Content will be cached.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+
+        if (originalPath.isNotEmpty) {
+          final fileName = _getCleanFileName(originalPath);
           
-          // Check if file already exists in the list
           final exists = _items.any((item) => 
             item.isFile && item.originalFileName == fileName
           );
           
           if (!exists) {
-            _items.insert(_items.length - 1, MergeItem(
-              file: File(file.path),
-              originalFileName: fileName
-            ));
+            // Read and cache the content immediately for dropped files
+            try {
+              final file = File(originalPath);
+              final content = file.readAsStringSync();
+              _items.insert(_items.length - 1, MergeItem(
+                filePath: originalPath,
+                originalFileName: fileName,
+                cachedContent: content,
+                importMethod: FileImportMethod.dropped,
+                lastModified: DateTime.now(),
+              ));
+            } catch (e) {
+              print('Error caching file content: $e');
+            }
           }
         }
       }
@@ -174,12 +196,12 @@ class _FileManagerHomeState extends State<FileManagerHome> {
     });
   }
 
-    void _handleItemTap(MergeItem item) async {
+  void _handleItemTap(MergeItem item) async {
     if (item.isText && !item.isPlaceholder) {
       _editTextBlock(item);
     } else if (item.isFile) {
       try {
-        final content = await _fileService.getFileContent(item.file!);
+        final content = await _fileService.getFileContent(item.filePath!); // Changed from item.file!
         _textEditingController.text = content;
         if (mounted) {
           showDialog(
@@ -191,7 +213,6 @@ class _FileManagerHomeState extends State<FileManagerHome> {
                 isEdit: true,
                 onSave: () {
                   setState(() {
-                    // Convert file to text block
                     final index = _items.indexOf(item);
                     _items[index] = MergeItem(
                       customText: _textEditingController.text,
@@ -208,7 +229,7 @@ class _FileManagerHomeState extends State<FileManagerHome> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(e.toString()),
+              content: Text('Error reading file: $e'),
               backgroundColor: Colors.red,
             ),
           );
@@ -298,117 +319,223 @@ class _FileManagerHomeState extends State<FileManagerHome> {
     });
   }
 
-void _resetAll() async {
-  setState(() {
-    // Clear all items
-    _items.clear();
-    // Add back initial placeholder
-    _items.add(MergeItem(isPlaceholder: true));
-    // Clear text controller
-    _textEditingController.clear();
-    // Reset drag state
-    _isDragging = false;
-    // Reset merge state
-    _isMerging = false;
-  });
-
-  // Clear temporary files
-  try {
-    final tempDir = Directory(path.join(
-      path.dirname(Platform.resolvedExecutable),
-      'Drops'
-    ));
-    if (await tempDir.exists()) {
-      await tempDir.delete(recursive: true);
-      await tempDir.create();
-    }
-  } catch (e) {
-    print('Error clearing temporary files: $e');
-  }
-}
-
-// Update the build method to include the reset button
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    appBar: AppBar(
-      title: const Text('Droppy'),
-      centerTitle: true,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          tooltip: 'Reset All',
-          onPressed: _resetAll,
-        ),
-      ],
-    ),
-    body: Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        children: [
-          Expanded(
-            child: FileDropZone(
-              items: _items,
-              isDragging: _isDragging,
-              onDragDone: _handleFileDrop,
-              onDraggingChanged: (isDragging) => setState(() => _isDragging = isDragging),
-              onReorder: _handleReorder,
-              onEdit: _editTextBlock,
-              onRemove: _removeItem,
-              onPlaceholderTap: (index) => _insertTextBlock(index, isEmpty: true),
-              onItemTap: _handleItemTap,
-            ),
+  Future<void> _saveSession() async {
+    try {
+      await _fileService.exportSession(_items);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session saved successfully!'),
+            backgroundColor: Colors.green,
           ),
-          const SizedBox(height: 16), // Added padding
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 200,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _items.length >= 2 && !_isMerging ? _mergeFiles : null,
-                  child: _isMerging
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text(
-                          'Merge Files',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              SizedBox(
-                width: 200,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _items.length >= 2 && !_isMerging ? _copyToClipboard : null,
-                  child: _isMerging
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text(
-                          'Copy to Clipboard',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                ),
-              ),
-            ],
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadSession() async {
+    try {
+      final loadedItems = await _fileService.importSession();
+      setState(() {
+        _items = loadedItems;
+        if (!_items.any((item) => item.isPlaceholder)) {
+          _items.add(MergeItem(isPlaceholder: true));
+        }
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session loaded successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _resetAll() async {
+    setState(() {
+      // Clear all items
+      _items.clear();
+      // Add back initial placeholder
+      _items.add(MergeItem(isPlaceholder: true));
+      // Clear text controller
+      _textEditingController.clear();
+      // Reset drag state
+      _isDragging = false;
+      // Reset merge state
+      _isMerging = false;
+    });
+
+    // Clear temporary files
+    try {
+      final tempDir = Directory(path.join(
+        path.dirname(Platform.resolvedExecutable),
+        'Drops'
+      ));
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+        await tempDir.create();
+      }
+    } catch (e) {
+      print('Error clearing temporary files: $e');
+    }
+  }
+
+  // Add a method to handle file picking as an alternative
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.any,
+    );
+
+    if (result != null) {
+      setState(() {
+        for (final file in result.files) {
+          if (file.path != null && file.path!.isNotEmpty) {
+            final fileName = _getCleanFileName(file.path!);
+            
+            final exists = _items.any((item) => 
+              item.isFile && item.originalFileName == fileName
+            );
+            
+            if (!exists) {
+              _items.insert(_items.length - 1, MergeItem(
+                filePath: file.path!,
+                originalFileName: fileName,
+                importMethod: FileImportMethod.picked,
+                lastModified: DateTime.now(),
+              ));
+            }
+          }
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Droppy'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save),
+            tooltip: 'Save Session',
+            onPressed: _items.length > 1 ? _saveSession : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            tooltip: 'Load Session',
+            onPressed: _loadSession,
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy),
+            tooltip: 'Copy to Clipboard',
+            onPressed: _items.length > 1 ? _copyToClipboard : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.merge_type),
+            tooltip: 'Merge Files',
+            onPressed: _items.length > 1 ? _mergeFiles : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Reset All',
+            onPressed: _items.length > 1 ? _resetAll : null,
           ),
         ],
       ),
-    ),
-  );
-}
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Expanded(
+              child: FileDropZone(
+                items: _items,
+                isDragging: _isDragging,
+                onDragDone: _handleFileDrop,
+                onDraggingChanged: (isDragging) => setState(() => _isDragging = isDragging),
+                onReorder: _handleReorder,
+                onEdit: _editTextBlock,
+                onRemove: _removeItem,
+                onPlaceholderTap: (index) => _insertTextBlock(index, isEmpty: true),
+                onItemTap: _handleItemTap,
+              ),
+            ),
+            const SizedBox(height: 16), // Added padding
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 200,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _items.length >= 2 && !_isMerging ? _mergeFiles : null,
+                    child: _isMerging
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Merge Files',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 200,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _items.length >= 2 && !_isMerging ? _copyToClipboard : null,
+                    child: _isMerging
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Copy to Clipboard',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _pickFiles,
+        tooltip: 'Pick Files',
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
 }
